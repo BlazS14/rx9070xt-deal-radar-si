@@ -117,6 +117,11 @@ enabled = true
 shipping_to_slovenia_eur = 0.0
 scan_warehouse_deals = true
 
+[watchers.alternate_de]
+enabled = true
+shipping_to_slovenia_eur = 16.99
+scan_outlet = true
+
 [watchers.alza]
 enabled = true
 shipping_to_slovenia_eur = 9.90

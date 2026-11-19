@@ -8,6 +8,7 @@ from .caseking import CasekingWatcher
 from .ceneje import CenejeWatcher
 from .custom_url import CustomUrlsWatcher
 from .eu_shops import (
+    AlternateDeWatcher,
     AlzaWatcher,
     AmazonDeWatcher,
     ComputerUniverseWatcher,
@@ -31,6 +32,7 @@ ALL_WATCHER_CLASSES: list[type[BaseWatcher]] = [
     CasekingWatcher,
     ComputerUniverseWatcher,
     AmazonDeWatcher,
+    AlternateDeWatcher,
     AlzaWatcher,
     IdealoDeWatcher,
 ]

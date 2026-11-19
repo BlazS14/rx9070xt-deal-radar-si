@@ -109,23 +109,38 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 
 def _cmd_scan(config: RadarConfig, args: argparse.Namespace) -> int:
+    if args.browser:
+        config.general.use_browser_fallback = True
     only = [w.strip() for w in args.watchers.split(",") if w.strip()] if args.watchers else None
     runner = RadarRunner(config)
-    console.print("[cyan]Scanning RX 9070 XT watchers for Slovenia...[/cyan]")
+    mode_tag = " (with local Chromium browser fallback)" if config.general.use_browser_fallback else ""
+    console.print(f"[cyan]Scanning RX 9070 XT watchers for Slovenia{mode_tag}...[/cyan]")
     summary = asyncio.run(
         runner.scan_once(only_watchers=only, send_notifications=not args.no_notify)
     )
-    _print_watcher_health(runner.storage.list_watcher_health())
+    health_rows = runner.storage.list_watcher_health()
+    _print_watcher_health(health_rows)
     deals = runner.storage.list_best_deals(limit=args.limit, only_in_stock=args.in_stock)
     _print_deals_table(deals)
     console.print(
         f"[bold]Scan complete:[/bold] {len(summary.evaluated_offers)} offers evaluated, "
         f"{len(summary.alerts_triggered)} alerts triggered."
     )
+    if not config.general.use_browser_fallback and any(
+        "403" in str(r.get("message", "")) for r in health_rows
+    ):
+        console.print(
+            "[dim]Tip: Some stores reject plain HTTP requests (HTTP 403). For JS-rendered stores, "
+            "install local Chromium support:[/dim]\n"
+            "  [bold]pip install -e \".[browser]\" && playwright install chromium[/bold]\n"
+            "  [dim]Then run[/dim] [bold]deal-radar scan --browser[/bold] [dim](or set use_browser_fallback = true in config.toml).[/dim]"
+        )
     return 0
 
 
 def _cmd_watch(config: RadarConfig, args: argparse.Namespace) -> int:
+    if args.browser:
+        config.general.use_browser_fallback = True
     only = [w.strip() for w in args.watchers.split(",") if w.strip()] if args.watchers else None
     runner = RadarRunner(config)
 
@@ -256,12 +271,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_scan = sub.add_parser("scan", help="Run one full scan across enabled store watchers")
     p_scan.add_argument("--watchers", default="", help="Comma-separated subset of watchers (e.g. mimovrste,caseking)")
+    p_scan.add_argument("--browser", action="store_true", help="Enable local Playwright Chromium fallback for JS/403 pages")
     p_scan.add_argument("--no-notify", action="store_true", help="Skip sending alerts during this scan")
     p_scan.add_argument("--in-stock", action="store_true", help="Show only in-stock offers")
     p_scan.add_argument("--limit", type=int, default=30)
 
     p_watch = sub.add_parser("watch", help="Run continuously in the background and ping on hot deals")
     p_watch.add_argument("--watchers", default="", help="Comma-separated subset of watchers")
+    p_watch.add_argument("--browser", action="store_true", help="Enable local Playwright Chromium fallback for JS/403 pages")
     p_watch.add_argument("--dashboard", action="store_true", help="Also run local web dashboard on http://127.0.0.1:8765")
 
     p_deals = sub.add_parser("deals", help="Show cheapest stored RX 9070 XT deals from local SQLite DB")

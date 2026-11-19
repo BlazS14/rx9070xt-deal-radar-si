@@ -6,6 +6,7 @@ import pytest
 
 from deal_radar.matching import (
     detect_condition,
+    extract_all_prices_eur,
     extract_brand_and_variant,
     extract_promos_from_text,
     is_rx_9070_xt,
@@ -110,3 +111,9 @@ def test_brand_and_variant_extraction() -> None:
         "XFX",
         "Mercury",
     )
+
+
+def test_ignores_ex_vat_ddv_prices() -> None:
+    prices = extract_all_prices_eur("1.097,16 € 899,31 € + DDV")
+    assert prices == [1097.16]
+

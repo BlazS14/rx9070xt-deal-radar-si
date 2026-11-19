@@ -153,3 +153,57 @@ def test_ceneje_parser_extracts_slovenian_listings() -> None:
     assert len(offers) == 2
     prices = sorted(o.listed_price_eur for o in offers)
     assert prices == [689.00, 719.90]
+
+
+def test_amazon_de_warehouse_parser_extracts_price_and_checkout_promo() -> None:
+    from deal_radar.watchers.eu_shops import parse_amazon_de_page
+
+    html = """
+    <html><body>
+      <div data-component-type="s-search-result" data-asin="B09070XT01">
+        <h2><a href="/dp/B09070XT01/ref=sr_1_1"><span>Sapphire Pulse AMD Radeon RX 9070 XT 16GB GDDR6</span></a></h2>
+        <span class="a-price"><span class="a-offscreen">749,00 €</span></span>
+        <span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">869,00 €</span></span>
+        <span>Amazon Retourenkauf · Sparen Sie 20% an der Kasse</span>
+      </div>
+      <div data-component-type="s-search-result" data-asin="B09070NON1">
+        <h2><a href="/dp/B09070NON1"><span>Sapphire Pulse AMD Radeon RX 9070 16GB</span></a></h2>
+        <span class="a-price"><span class="a-offscreen">599,00 €</span></span>
+      </div>
+    </body></html>
+    """
+    offers = parse_amazon_de_page(
+        html,
+        "https://www.amazon.de/s?k=rx+9070+xt&i=warehouse-deals",
+        shipping_eur=0.0,
+        default_condition=Condition.B_WARE,
+    )
+    assert len(offers) == 1
+    assert offers[0].sku == "B09070XT01"
+    assert offers[0].listed_price_eur == 749.00
+    assert offers[0].original_price_eur == 869.00
+    assert offers[0].condition == Condition.B_WARE
+    assert len(offers[0].detected_promos) == 1
+    assert offers[0].detected_promos[0].percent_off == 20.0
+
+    ev = DealEngine(RadarConfig()).evaluate(offers[0])
+    assert ev.effective_total_eur == 599.20
+
+
+def test_discover_9070_xt_filter_links() -> None:
+    from deal_radar.watchers.slovenian_shops import discover_9070_xt_filter_links
+
+    html = """
+    <html><body>
+      <aside>
+        <a href="/category/graficne-kartice/?gpu=rx-9070-xt">Radeon RX 9070 XT (31)</a>
+        <a href="/category/graficne-kartice/?gpu=rx-9070">Radeon RX 9070 (11)</a>
+      </aside>
+      <main>
+        <a href="/product/sapphire-rx-9070-xt-16gb-gddr6">Sapphire PURE Radeon RX 9070 XT 16GB GDDR6 OC</a>
+      </main>
+    </body></html>
+    """
+    links = discover_9070_xt_filter_links(html, "https://funtech.si/category/graficne-kartice/")
+    assert links == ["https://funtech.si/category/graficne-kartice/?gpu=rx-9070-xt"]
+

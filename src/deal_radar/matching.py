@@ -88,8 +88,8 @@ _CONDITION_RULES: list[tuple[Condition, re.Pattern[str], str]] = [
 
 # Price extraction supporting EU formats: "1.015,65 €", "867,40 €", "€ 607.20", "699 EUR", "1 049,00 €"
 _PRICE_RE = re.compile(
-    r"(?:€|EUR)\s*(\d{1,3}(?:[.\s]\d{3})+|\d{3,4})(?:[.,](\d{2}))?|"
-    r"(\d{1,3}(?:[.\s]\d{3})+|\d{3,4})(?:[.,](\d{2}))?\s*(?:€|EUR)\b",
+    r"(?:€|EUR\b)\s*(\d{1,3}(?:[.\s]\d{3})+|\d{3,4})(?:[.,](\d{2}))?|"
+    r"(\d{1,3}(?:[.\s]\d{3})+|\d{3,4})(?:[.,](\d{2}))?\s*(?:€|EUR\b)",
     re.IGNORECASE,
 )
 
@@ -247,13 +247,26 @@ def parse_price_eur(
     return None
 
 
+_EX_VAT_PRICE_RE = re.compile(
+    r"(?:\b\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d{2})?\s*(?:€|EUR)|(?<!\d\s)(?:€|EUR)\s*\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d{2})?)"
+    r"\s*(?:\+\s*DDV|brez\s+DDV|exkl\.?\s*MwSt\.?|zzgl\.?\s*MwSt\.?|excl\.?\s*VAT)",
+    re.IGNORECASE,
+)
+
+
 def extract_all_prices_eur(
-    text: str, *, min_eur: float = 200.0, max_eur: float = 3500.0
+    text: str,
+    *,
+    min_eur: float = 200.0,
+    max_eur: float = 3500.0,
+    ignore_ex_vat: bool = True,
 ) -> list[float]:
     """Return all currency-tagged EUR prices found in text, preserving order."""
     if not text:
         return []
     normalized = text.replace("\xa0", " ").replace("\u202f", " ")
+    if ignore_ex_vat:
+        normalized = _EX_VAT_PRICE_RE.sub(" ", normalized)
     prices: list[float] = []
     for match in _PRICE_RE.finditer(normalized):
         whole = match.group(1) or match.group(3)
