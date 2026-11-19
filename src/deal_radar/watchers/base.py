@@ -178,29 +178,52 @@ def extract_prices_from_card(card: Tag) -> tuple[float | None, float | None]:
     """Extract (listed_price, original_strikethrough_price) from a product card DOM node."""
     # Look for explicit strikethrough / old-price elements first
     old_price: float | None = None
-    for sel in ("del", "s", "[class*='old']", "[class*='strike']", "[class*='was']", "[class*='prev']", "[class*='regular']"):
+    for sel in (
+        "del",
+        "s",
+        "[class*='old']",
+        "[class*='strike']",
+        "[class*='was']",
+        "[class*='prev']",
+        "[class*='regular']",
+    ):
         for node in card.select(sel):
-            val = parse_price_eur(node.get_text(" ", strip=True))
+            val = parse_price_eur(node.get_text("", strip=True)) or parse_price_eur(
+                node.get_text(" ", strip=True)
+            )
             if val is not None:
                 old_price = max(old_price or 0.0, val)
 
-    all_prices = extract_all_prices_eur(card.get_text(" ", strip=True))
-    if not all_prices:
-        # Fallback to any price-like class
-        for node in card.select("[class*='price'], [itemprop='price'], [data-price]"):
-            raw = node.get("content") or node.get("data-price") or node.get_text(" ", strip=True)
-            val = parse_price_eur(str(raw))
+    # Prefer dedicated price elements with compact text (prevents <span>1</span>.<span>249</span> splitting)
+    dedicated_prices: list[float] = []
+    for node in card.select("[class*='price'], [itemprop='price'], [data-price]"):
+        # Skip strike-through nodes already captured above
+        if node.name in {"del", "s"}:
+            continue
+        raw_attr = node.get("content") or node.get("data-price")
+        if raw_attr:
+            val = parse_price_eur(str(raw_attr))
             if val is not None:
-                all_prices.append(val)
+                dedicated_prices.append(val)
+                continue
+        compact = node.get_text("", strip=True)
+        spaced = node.get_text(" ", strip=True)
+        found = extract_all_prices_eur(compact) or extract_all_prices_eur(spaced)
+        if found:
+            dedicated_prices.extend(found)
 
+    all_prices = dedicated_prices or extract_all_prices_eur(card.get_text(" ", strip=True))
     if not all_prices:
         return None, old_price
 
-    # Current listed price is normally the lowest valid GPU price on the card;
-    # strikethrough/original price is higher.
-    listed = min(all_prices)
-    highest = max(all_prices)
-    if old_price is None and highest > listed + 5.0:
+    # If a container has >4 distinct GPU prices, it is likely a multi-product grid wrapper — reject!
+    unique_prices = sorted(set(all_prices))
+    if len(unique_prices) > 4:
+        return None, None
+
+    listed = min(unique_prices)
+    highest = max(unique_prices)
+    if old_price is None and highest > listed + 5.0 and highest <= listed * 1.65:
         old_price = highest
     if old_price is not None and old_price <= listed:
         old_price = None
@@ -219,7 +242,7 @@ def parse_generic_product_cards(
     default_condition: Condition = Condition.NEW,
     page_level_promos: list[Any] | None = None,
 ) -> list[RawOffer]:
-    """Generic card extractor using CSS selectors + heuristic fallback."""
+    """Generic card extractor using CSS selectors + safe heuristic fallback."""
     offers: list[RawOffer] = []
     seen_keys: set[str] = set()
 
@@ -230,17 +253,20 @@ def parse_generic_product_cards(
             cards.extend(found)
             break
 
-    # Fallback: scan anchors whose text mentions 9070 XT and walk up to their card container
+    # Safe fallback: only attach to tight product-sized containers (never whole grids/sidebars)
     if not cards:
         for a in soup.find_all("a", href=True):
             txt = a.get_text(" ", strip=True)
-            if is_rx_9070_xt(txt):
+            if is_rx_9070_xt(txt) and len(txt) >= 18:
                 parent = a.find_parent(["article", "li", "div"])
-                if parent is not None:
+                if parent is not None and len(parent.get_text(" ", strip=True)) <= 1200:
                     cards.append(parent)
 
     for card in cards:
         card_text = card.get_text(" ", strip=True)
+        # Reject huge wrapper containers that mix multiple products/prices
+        if len(card_text) > 2200:
+            continue
         link = None
         title = ""
 

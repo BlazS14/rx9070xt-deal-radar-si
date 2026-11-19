@@ -208,7 +208,6 @@ def parse_mimovrste_listing_page(
 ) -> list[RawOffer]:
     """Parse a Mimovrste search, category, open-box campaign, or promo list page."""
     soup = BeautifulSoup(html, "lxml")
-    page_promos = extract_promos_from_text(soup.get_text(" ", strip=True)[:3000], store="mimovrste")
 
     offers = parse_json_ld_products(
         soup,
@@ -229,7 +228,6 @@ def parse_mimovrste_listing_page(
         ],
         ships_to_slovenia=True,
         default_condition=default_condition,
-        page_level_promos=page_promos,
     )
 
     by_key: dict[str, RawOffer] = {o.offer_key: o for o in offers}

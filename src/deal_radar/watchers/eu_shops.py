@@ -45,6 +45,30 @@ _GPUTRACKER_SHOP_RE = re.compile(
 )
 
 
+_GPUTRACKER_SI_SHOPS = {
+    "amazon.de",
+    "amazon.fr",
+    "amazon.it",
+    "amazon.es",
+    "caseking.de",
+    "computeruniverse.net",
+    "alternate.de",
+    "alternate.at",
+    "alza.de",
+    "alza.at",
+    "reichelt.de",
+    "ldlc.com",
+    "proshop.de",
+    "proshop.at",
+    "notebooksbilliger.de",
+    "cyberport.at",
+    "cyberport.de",
+    "galaxus.at",
+    "galaxus.de",
+    "bpm-power.com",
+}
+
+
 def parse_amazon_eu_page(
     html: str,
     page_url: str,
@@ -87,14 +111,15 @@ def parse_amazon_eu_page(
         for price_wrap in card.select("span.a-price"):
             classes = set(price_wrap.get("class") or [])
             offscreen = price_wrap.select_one("span.a-offscreen")
-            raw_p = offscreen.get_text(" ", strip=True) if offscreen else ""
+            raw_p = offscreen.get_text("", strip=True) if offscreen else ""
             if not raw_p:
                 whole = price_wrap.select_one("span.a-price-whole")
                 frac = price_wrap.select_one("span.a-price-fraction")
                 if whole:
-                    w_txt = whole.get_text("", strip=True).rstrip(",.")
-                    f_txt = frac.get_text("", strip=True) if frac else "00"
-                    raw_p = f"{w_txt},{f_txt} €"
+                    w_digits = re.sub(r"\D", "", whole.get_text("", strip=True))
+                    f_digits = re.sub(r"\D", "", frac.get_text("", strip=True)) if frac else "00"
+                    if w_digits:
+                        raw_p = f"{w_digits},{f_digits[:2] or '00'} €"
 
             val = parse_price_eur(raw_p)
             if val is None:
@@ -161,14 +186,13 @@ parse_amazon_de_page = parse_amazon_eu_page
 def parse_gputracker_page(
     html: str, page_url: str, *, shipping_eur: float = 15.99
 ) -> list[RawOffer]:
-    """Parse GPUTracker.eu RX 9070 XT search results across 40+ European shops."""
+    """Parse GPUTracker.eu RX 9070 XT search results from verified EU-to-SI retailers."""
     soup = BeautifulSoup(html, "lxml")
     offers: list[RawOffer] = []
     seen_keys: set[str] = set()
 
     cards = soup.select(".stock-card, .card, article, [class*='offer'], [class*='product-row']")
     if not cards:
-        # Fallback: find every "View offer" link and inspect its parent container
         for a in soup.find_all("a", href=True):
             if "view offer" in a.get_text(" ", strip=True).lower():
                 parent = a.find_parent(["div", "article", "li"])
@@ -177,20 +201,25 @@ def parse_gputracker_page(
 
     for card in cards:
         text = card.get_text(" ", strip=True)
-        if not is_rx_9070_xt(text):
+        # Skip large layout wrappers that contain multiple cards or sidebar filters
+        if len(text) > 900 or not is_rx_9070_xt(text):
             continue
 
         prices = extract_all_prices_eur(text)
-        if not prices:
+        if not prices or len(set(prices)) > 3:
             continue
         listed_price = min(prices)
 
-        # Find best product title and external/offer link
         title = ""
         offer_url = page_url
         for h in card.find_all(["h2", "h3", "h4", "h5", "a"]):
             t = h.get_text(" ", strip=True)
-            if 18 <= len(t) <= 180 and is_rx_9070_xt(t) and "view offer" not in t.lower() and "create an alert" not in t.lower():
+            if (
+                18 <= len(t) <= 180
+                and is_rx_9070_xt(t)
+                and "view offer" not in t.lower()
+                and "create an alert" not in t.lower()
+            ):
                 title = t
                 if h.name == "a" and h.get("href"):
                     offer_url = urljoin(page_url, str(h["href"]))
@@ -205,11 +234,13 @@ def parse_gputracker_page(
                 break
 
         shop_m = _GPUTRACKER_SHOP_RE.search(text)
-        seller = shop_m.group(1).lower() if shop_m else "gputracker.eu"
+        seller = shop_m.group(1).lower() if shop_m else ""
+        if not seller or seller not in _GPUTRACKER_SI_SHOPS:
+            continue
+
         in_stock, stock_text = infer_stock_from_text(text, default=True)
         cond, cond_note = detect_condition(f"{title} {text}")
 
-        # Dedup by seller + title + price path
         key = make_offer_key("gputracker_eu", f"{seller}/{title[:60]}", condition=cond)
         if key in seen_keys:
             continue
@@ -720,9 +751,5 @@ class IdealoDeWatcher(_EUVendorWatcher):
         offers = super().parse_html(
             html, page_url, shipping_eur=shipping_eur, default_condition=default_condition
         )
-        # Filter out editorial/sidebar category snippets like bare "RX 9070 XT"
-        return [
-            o
-            for o in offers
-            if "/OffersOfProduct/" in o.url or len(o.title) >= 22
-        ]
+        # Filter strictly to real Idealo product offer pages (never editorial/guide text)
+        return [o for o in offers if "/OffersOfProduct/" in o.url]

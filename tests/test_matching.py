@@ -117,3 +117,25 @@ def test_ignores_ex_vat_ddv_prices() -> None:
     prices = extract_all_prices_eur("1.097,16 € 899,31 € + DDV")
     assert prices == [1097.16]
 
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("1,249.99 €", 1249.99),
+        ("€ 1,205.37", 1205.37),
+        ("1.209,00 €", 1209.00),
+        ("1 200 €", 1200.00),
+        ("1,200 EUR", 1200.00),
+        ("Prihranite 220,00 € · 980,00 €", 980.00),
+        ("ab 205,00 € / Monat · 1.249,00 €", 1249.00),
+        ("209,99 €", None),
+    ],
+)
+def test_never_truncates_thousands_or_accepts_sub_420_noise(raw: str, expected: float | None) -> None:
+    assert parse_price_eur(raw) == expected
+    if expected is not None:
+        assert extract_all_prices_eur(raw) == [expected]
+    else:
+        assert extract_all_prices_eur(raw) == []
+
+

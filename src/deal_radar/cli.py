@@ -306,6 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("dashboard", help="Launch local web dashboard UI")
     sub.add_parser("test-notify", help="Send a realistic €607 stacked-deal test ping to verify notifications")
     sub.add_parser("list-watchers", help="List all built-in store watchers")
+    sub.add_parser("reset-db", help="Delete local SQLite database (clears old offers and alert history)")
     return parser
 
 
@@ -331,6 +332,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     config = load_config(args.config)
+    if args.command == "reset-db":
+        db_file = Path(config.general.db_path)
+        for suffix in ("", "-wal", "-shm"):
+            p = Path(f"{db_file}{suffix}")
+            if p.exists():
+                p.unlink()
+        console.print(f"[green]Cleared local database:[/green] {db_file}")
+        return 0
     if args.command == "scan":
         return _cmd_scan(config, args)
     if args.command == "watch":

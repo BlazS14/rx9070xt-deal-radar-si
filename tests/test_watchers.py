@@ -221,6 +221,13 @@ def test_gputracker_parser_tracks_shop_and_stock() -> None:
         <a href="https://coolmod.com/offer-1">View offer</a>
       </div>
       <div class="stock-card">
+        <h3>Sapphire Pulse AMD Radeon RX 9070 XT 16GB GDDR6</h3>
+        <span>caseking.de</span>
+        <span>799 €</span>
+        <span>Not in stock</span>
+        <a href="https://caseking.de/offer-1">View offer</a>
+      </div>
+      <div class="stock-card">
         <h3>ASUS Prime Radeon RX 9070 XT 16GB GDDR6 OC Edition</h3>
         <span>amazon.fr</span>
         <span>659 €</span>
@@ -234,8 +241,9 @@ def test_gputracker_parser_tracks_shop_and_stock() -> None:
     )
     assert len(offers) == 2
     by_seller = {o.seller_name: o for o in offers}
-    assert by_seller["coolmod.com"].in_stock is False
-    assert by_seller["coolmod.com"].listed_price_eur == 717.00
+    assert "coolmod.com" not in by_seller
+    assert by_seller["caseking.de"].in_stock is False
+    assert by_seller["caseking.de"].listed_price_eur == 799.00
     assert by_seller["amazon.fr"].in_stock is True
     assert by_seller["amazon.fr"].listed_price_eur == 659.00
 

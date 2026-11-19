@@ -86,15 +86,42 @@ _CONDITION_RULES: list[tuple[Condition, re.Pattern[str], str]] = [
     ),
 ]
 
-# Price extraction supporting EU formats: "1.015,65 €", "867,40 €", "€ 607.20", "699 EUR", "1 049,00 €"
+# Price extraction supporting BOTH EU ("1.249,99 €", "1 249,99 €", "867,40 €")
+# AND EN/US ("1,249.99 €", "€1,205.37", "607.20 €") formats.
+# Negative lookbehind (?<![\d.,']) guarantees we NEVER match "209.99 €" inside "1,209.99 €".
+_NUM_TOKEN = (
+    r"(?:"
+    r"\d{1,3}(?:[.\s'\u00a0\u202f]\d{3})+(?:,\d{1,2})?"  # EU thousands: 1.249,99 / 1 249,99 / 1.200
+    r"|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?"                  # EN thousands: 1,249.99 / 1,200
+    r"|\d{3,4}(?:[.,]\d{1,2})?"                           # Plain 3-4 digits: 867,40 / 607.20 / 607
+    r")"
+)
+
 _PRICE_RE = re.compile(
-    r"(?:€|EUR\b)\s*(\d{1,3}(?:[.\s]\d{3})+|\d{3,4})(?:[.,](\d{2}))?|"
-    r"(\d{1,3}(?:[.\s]\d{3})+|\d{3,4})(?:[.,](\d{2}))?\s*(?:€|EUR\b)",
+    rf"(?:€|EUR\b)\s*(?<![\d.,'])({_NUM_TOKEN})(?![\d.,]\d)|"
+    rf"(?<![\d.,'])({_NUM_TOKEN})\s*(?:€|EUR\b)",
     re.IGNORECASE,
 )
 
-# Standalone decimal price (used when extracting from dedicated price tags without € symbol)
-_BARE_PRICE_RE = re.compile(r"(\d{1,3}(?:[.\s]\d{3})+|\d{2,4})(?:[.,](\d{2}))?")
+# Standalone number fallback (used only on dedicated price attributes/tags without € symbol)
+_BARE_PRICE_RE = re.compile(rf"(?<![\d.,'])({_NUM_TOKEN})(?![\d.,]\d)")
+
+# Strip non-product prices before parsing: ex-VAT, savings amounts, and monthly financing/installments
+_EX_VAT_PRICE_RE = re.compile(
+    rf"(?:\b{_NUM_TOKEN}\s*(?:€|EUR\b)|(?<!\d\s)(?:€|EUR\b)\s*{_NUM_TOKEN})"
+    r"\s*(?:\+\s*DDV|brez\s+DDV|exkl\.?\s*MwSt\.?|zzgl\.?\s*MwSt\.?|excl\.?\s*VAT)",
+    re.IGNORECASE,
+)
+_SAVINGS_PRICE_RE = re.compile(
+    rf"(?:prihranite|prihranek|uštedite|sparen\s+sie|spare|save|rabatt|popust|you\s+save)\s*[:\-]?\s*"
+    rf"(?:€|EUR\b)?\s*{_NUM_TOKEN}\s*(?:€|EUR\b)?",
+    re.IGNORECASE,
+)
+_INSTALLMENT_PRICE_RE = re.compile(
+    rf"(?:(?:od|ab|from|à|x)\s*)?(?:€|EUR\b)?\s*{_NUM_TOKEN}\s*(?:€|EUR\b)?\s*"
+    r"(?:/\s*(?:mesec|mes\.?|monat|mtl\.?|month|mo\b)|na\s+mesec|pro\s+monat|per\s+month|raten?\b)",
+    re.IGNORECASE,
+)
 
 # Promo code + discount patterns across Slovenian, German, and English
 _PROMO_CODE_WITH_PCT_PATTERNS = [
@@ -122,19 +149,18 @@ _PROMO_CODE_WITH_EUR_PATTERNS = [
     ),
 ]
 
-# Checkout / event automatic discounts (e.g. Amazon Warehouse -20% at checkout, Mimovrste Black Friday extra -20%)
+# Explicit checkout-only automatic discounts (e.g. Amazon Warehouse "Sparen Sie 20% an der Kasse")
+# Intentionally strict: requires explicit checkout/cart wording so sitewide "Black Friday -20%" headers
+# don't fabricate fake discounts on items already discounted!
 _CHECKOUT_PCT_PATTERNS = [
     re.compile(
-        r"(?i)(?:dodatnih|dodatni|extra)\s*[-]?\s*(\d{1,2})\s*%\s*(?:popust\w*|ceneje|v\s+košarici|na\s+blagajni|at\s+checkout|an\s+der\s+kasse)"
+        r"(?i)(?:dodatnih|dodatni|extra)\s*[-]?\s*(\d{1,2})\s*%\s*(?:v\s+košarici|na\s+blagajni|at\s+checkout|an\s+der\s+kasse)"
     ),
     re.compile(
-        r"(?i)(?:save|sparen\s+sie|prihranite)\s+(?:an\s+extra\s+)?(\d{1,2})\s*%\s*(?:at\s+checkout|an\s+der\s+kasse|v\s+košarici|ob\s+nakupu)"
+        r"(?i)(?:save|sparen\s+sie|prihranite)\s+(?:an\s+extra\s+)?(\d{1,2})\s*%\s*(?:at\s+checkout|an\s+der\s+kasse|v\s+košarici)"
     ),
     re.compile(
         r"(?i)(\d{1,2})\s*%\s*(?:rabatt\s+an\s+der\s+kasse|off\s+at\s+checkout|popust\w*\s+v\s+košarici|ceneje\s+v\s+košarici)"
-    ),
-    re.compile(
-        r"(?i)(?:black\s+friday|črni\s+petek|cyber\s+monday)[^.\n]{0,40}?(?:dodatnih|extra|koda|code)[^.\n]{0,20}?[-]?\s*(\d{1,2})\s*%"
     ),
 ]
 
@@ -200,80 +226,107 @@ def detect_condition(text: str) -> tuple[Condition, str]:
     return Condition.NEW, ""
 
 
-def _digits_to_float(whole: str, frac: str | None) -> float | None:
-    cleaned_whole = re.sub(r"[.\s]", "", whole)
-    if not cleaned_whole.isdigit():
+def _parse_number_token(token: str) -> float | None:
+    """Convert EU ('1.249,99', '1 200') or EN ('1,249.99', '1,200') numeric string to float."""
+    s = token.replace("\xa0", "").replace("\u202f", "").replace("'", "").replace(" ", "").strip()
+    if not s:
         return None
-    if frac and frac.isdigit():
-        return float(f"{cleaned_whole}.{frac}")
-    return float(cleaned_whole)
+
+    has_dot = "." in s
+    has_comma = "," in s
+
+    if has_dot and has_comma:
+        # Whichever separator comes LAST is the decimal separator
+        if s.rfind(",") > s.rfind("."):
+            # EU: 1.249,99
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            # EN: 1,249.99
+            s = s.replace(",", "")
+    elif has_comma:
+        parts = s.split(",")
+        if len(parts) == 2 and len(parts[1]) in {1, 2}:
+            # Decimal comma: 867,40
+            s = s.replace(",", ".")
+        elif all(len(p) == 3 for p in parts[1:]):
+            # Thousands comma: 1,200
+            s = s.replace(",", "")
+        else:
+            return None
+    elif has_dot:
+        parts = s.split(".")
+        if len(parts) == 2 and len(parts[1]) in {1, 2}:
+            # Decimal dot: 607.20
+            pass
+        elif all(len(p) == 3 for p in parts[1:]):
+            # Thousands dot: 1.200
+            s = s.replace(".", "")
+        else:
+            return None
+
+    try:
+        return round(float(s), 2)
+    except ValueError:
+        return None
+
+
+def _clean_price_noise(text: str, *, ignore_ex_vat: bool = True) -> str:
+    normalized = text.replace("\xa0", " ").replace("\u202f", " ").strip()
+    # Rejoin split thousands/decimals like "1 . 249 , 99" that come from nested HTML spans
+    normalized = re.sub(r"(\d)\s*([.,])\s*(\d)", r"\1\2\3", normalized)
+    if ignore_ex_vat:
+        normalized = _EX_VAT_PRICE_RE.sub(" ", normalized)
+    normalized = _SAVINGS_PRICE_RE.sub(" ", normalized)
+    normalized = _INSTALLMENT_PRICE_RE.sub(" ", normalized)
+    return normalized
 
 
 def parse_price_eur(
     text: str,
     *,
-    min_eur: float = 200.0,
+    min_eur: float = 420.0,
     max_eur: float = 3500.0,
     require_currency: bool = False,
 ) -> float | None:
-    """Parse a European or US-formatted EUR price from text."""
+    """Parse a European or EN-formatted EUR GPU price from text."""
     if not text:
         return None
-    normalized = text.replace("\xa0", " ").replace("\u202f", " ").strip()
+    cleaned = _clean_price_noise(text)
 
-    for match in _PRICE_RE.finditer(normalized):
-        whole = match.group(1) or match.group(3)
-        frac = match.group(2) or match.group(4)
-        val = _digits_to_float(whole, frac)
+    for match in _PRICE_RE.finditer(cleaned):
+        tok = match.group(1) or match.group(2)
+        val = _parse_number_token(tok)
         if val is not None and min_eur <= val <= max_eur:
-            return round(val, 2)
+            return val
 
     if require_currency:
         return None
 
-    # Fallback for clean price fields like "867,40" or "1.049,00" or "607.20"
-    # Handle US format "867.40" where "." is decimal (2 digits after dot)
-    us_dec = re.search(r"\b(\d{3,4})\.(\d{2})\b", normalized)
-    if us_dec:
-        val = float(f"{us_dec.group(1)}.{us_dec.group(2)}")
-        if min_eur <= val <= max_eur:
-            return round(val, 2)
-
-    for match in _BARE_PRICE_RE.finditer(normalized):
-        val = _digits_to_float(match.group(1), match.group(2))
+    for match in _BARE_PRICE_RE.finditer(cleaned):
+        val = _parse_number_token(match.group(1))
         if val is not None and min_eur <= val <= max_eur:
-            return round(val, 2)
+            return val
 
     return None
-
-
-_EX_VAT_PRICE_RE = re.compile(
-    r"(?:\b\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d{2})?\s*(?:€|EUR)|(?<!\d\s)(?:€|EUR)\s*\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d{2})?)"
-    r"\s*(?:\+\s*DDV|brez\s+DDV|exkl\.?\s*MwSt\.?|zzgl\.?\s*MwSt\.?|excl\.?\s*VAT)",
-    re.IGNORECASE,
-)
 
 
 def extract_all_prices_eur(
     text: str,
     *,
-    min_eur: float = 200.0,
+    min_eur: float = 420.0,
     max_eur: float = 3500.0,
     ignore_ex_vat: bool = True,
 ) -> list[float]:
-    """Return all currency-tagged EUR prices found in text, preserving order."""
+    """Return all currency-tagged EUR GPU prices found in text, preserving order."""
     if not text:
         return []
-    normalized = text.replace("\xa0", " ").replace("\u202f", " ")
-    if ignore_ex_vat:
-        normalized = _EX_VAT_PRICE_RE.sub(" ", normalized)
+    cleaned = _clean_price_noise(text, ignore_ex_vat=ignore_ex_vat)
     prices: list[float] = []
-    for match in _PRICE_RE.finditer(normalized):
-        whole = match.group(1) or match.group(3)
-        frac = match.group(2) or match.group(4)
-        val = _digits_to_float(whole, frac)
+    for match in _PRICE_RE.finditer(cleaned):
+        tok = match.group(1) or match.group(2)
+        val = _parse_number_token(tok)
         if val is not None and min_eur <= val <= max_eur:
-            prices.append(round(val, 2))
+            prices.append(val)
     return prices
 
 
