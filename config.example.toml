@@ -60,6 +60,22 @@ console_enabled = true
 
 # Optional: Discord Webhook (Server Settings -> Integrations -> Webhooks -> Copy URL)
 discord_webhook_url = ""
+# Optional: Ping yourself loudly in Discord (e.g. "<@123456789012345678>" or "@here")
+discord_mention = ""
+
+# Optional: Email via SMTP (for Gmail: enable 2FA -> create an App Password at myaccount.google.com/apppasswords)
+email_smtp_host = ""       # e.g. "smtp.gmail.com"
+email_smtp_port = 587
+email_username = ""        # e.g. "you@gmail.com"
+email_password = ""        # Gmail 16-character App Password (NOT your regular password)
+email_from = ""            # defaults to email_username if empty
+email_to = ""              # e.g. "you@gmail.com" (comma-separated for multiple)
+email_use_tls = true
+
+# Optional: Signal via local signal-cli-rest-api (https://github.com/bbernhard/signal-cli-rest-api)
+signal_api_url = ""        # e.g. "http://127.0.0.1:8080/v2/send"
+signal_sender = ""         # e.g. "+38640111222"
+signal_recipient = ""      # e.g. "+38640111222"
 
 # Optional: Telegram Bot (create via @BotFather, get chat_id via @userinfobot)
 telegram_bot_token = ""

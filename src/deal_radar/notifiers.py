@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import platform
 import shutil
+import smtplib
 import subprocess
 import sys
+from email.message import EmailMessage
 from typing import Any
 
 import httpx
@@ -56,8 +59,8 @@ def format_alert_summary(event: AlertEvent) -> tuple[str, str]:
     return short_title, "\n".join(lines)
 
 
-def build_discord_payload(event: AlertEvent) -> dict[str, Any]:
-    """Build a rich Discord webhook embed payload."""
+def build_discord_payload(event: AlertEvent, *, mention: str = "") -> dict[str, Any]:
+    """Build a rich Discord webhook embed payload with optional user/role ping."""
     offer = event.offer
     title, _ = format_alert_summary(event)
     color = {
@@ -116,7 +119,10 @@ def build_discord_payload(event: AlertEvent) -> dict[str, Any]:
     if offer.raw.image_url:
         embed["thumbnail"] = {"url": offer.raw.image_url}
 
-    return {"username": "RX 9070 XT Deal Radar SI", "embeds": [embed]}
+    payload: dict[str, Any] = {"username": "RX 9070 XT Deal Radar SI", "embeds": [embed]}
+    if mention.strip():
+        payload["content"] = f"{mention.strip()} {title}"
+    return payload
 
 
 class AlertDispatcher:
@@ -140,10 +146,18 @@ class AlertDispatcher:
         if self.config.desktop_enabled:
             results["desktop"] = self._notify_desktop(title, body, event.offer.url)
 
+        if self.config.email_smtp_host and self.config.email_to:
+            results["email"] = await asyncio.to_thread(self._notify_email, title, body)
+
         has_remote = bool(
             self.config.discord_webhook_url
             or (self.config.telegram_bot_token and self.config.telegram_chat_id)
             or self.config.ntfy_url
+            or (
+                self.config.signal_api_url
+                and self.config.signal_sender
+                and self.config.signal_recipient
+            )
         )
         if has_remote:
             async with httpx.AsyncClient(timeout=12.0) as client:
@@ -153,6 +167,12 @@ class AlertDispatcher:
                     results["telegram"] = await self._notify_telegram(client, title, body)
                 if self.config.ntfy_url:
                     results["ntfy"] = await self._notify_ntfy(client, event, title, body)
+                if (
+                    self.config.signal_api_url
+                    and self.config.signal_sender
+                    and self.config.signal_recipient
+                ):
+                    results["signal"] = await self._notify_signal(client, title, body)
 
         return results
 
@@ -197,7 +217,7 @@ class AlertDispatcher:
                 ps_script = (
                     "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;"
                     "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null;"
-                    f"$xml = [Windows.Data.Xml.Dom.XmlDocument]::new();"
+                    "$xml = [Windows.Data.Xml.Dom.XmlDocument]::new();"
                     f"$xml.LoadXml('<toast><visual><binding template=\"ToastGeneric\"><text>{safe_title}</text><text>{safe_body}</text></binding></visual></toast>');"
                     "$toast = [Windows.UI.Notifications.ToastNotification]::new($xml);"
                     "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('RX 9070 XT Deal Radar').Show($toast);"
@@ -240,14 +260,67 @@ class AlertDispatcher:
             logger.debug("Desktop notification unavailable: %s", exc)
         return False
 
+    def _notify_email(self, title: str, body: str) -> bool:
+        """Send an email alert via SMTP (works with Gmail App Passwords, Outlook, etc.)."""
+        try:
+            recipients = [r.strip() for r in self.config.email_to.split(",") if r.strip()]
+            if not recipients:
+                return False
+            msg = EmailMessage()
+            msg["Subject"] = title
+            msg["From"] = self.config.email_from or self.config.email_username
+            msg["To"] = ", ".join(recipients)
+            msg.set_content(body)
+
+            if self.config.email_smtp_port == 465:
+                with smtplib.SMTP_SSL(
+                    self.config.email_smtp_host, self.config.email_smtp_port, timeout=15
+                ) as smtp:
+                    if self.config.email_username and self.config.email_password:
+                        smtp.login(self.config.email_username, self.config.email_password)
+                    smtp.send_message(msg)
+            else:
+                with smtplib.SMTP(
+                    self.config.email_smtp_host, self.config.email_smtp_port, timeout=15
+                ) as smtp:
+                    smtp.ehlo()
+                    if self.config.email_use_tls:
+                        smtp.starttls()
+                        smtp.ehlo()
+                    if self.config.email_username and self.config.email_password:
+                        smtp.login(self.config.email_username, self.config.email_password)
+                    smtp.send_message(msg)
+            return True
+        except Exception as exc:
+            logger.warning("Email notification error: %s", exc)
+            return False
+
     async def _notify_discord(self, client: httpx.AsyncClient, event: AlertEvent) -> bool:
         try:
             resp = await client.post(
-                self.config.discord_webhook_url, json=build_discord_payload(event)
+                self.config.discord_webhook_url,
+                json=build_discord_payload(event, mention=self.config.discord_mention),
             )
             return 200 <= resp.status_code < 300
         except Exception as exc:
             logger.warning("Discord webhook error: %s", exc)
+            return False
+
+    async def _notify_signal(
+        self, client: httpx.AsyncClient, title: str, body: str
+    ) -> bool:
+        """Send a Signal message through a local signal-cli-rest-api instance."""
+        try:
+            recipients = [r.strip() for r in self.config.signal_recipient.split(",") if r.strip()]
+            payload = {
+                "message": f"{title}\n\n{body}",
+                "number": self.config.signal_sender,
+                "recipients": recipients,
+            }
+            resp = await client.post(self.config.signal_api_url, json=payload)
+            return 200 <= resp.status_code < 300
+        except Exception as exc:
+            logger.warning("Signal notification error: %s", exc)
             return False
 
     async def _notify_telegram(

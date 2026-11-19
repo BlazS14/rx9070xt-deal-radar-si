@@ -138,9 +138,23 @@ def _cmd_scan(config: RadarConfig, args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_interval_seconds(raw: str) -> int:
+    """Parse duration strings like '1h', '30m', '3600', '90s' into seconds."""
+    text = raw.strip().lower()
+    if text.endswith("h"):
+        return max(30, int(float(text[:-1]) * 3600))
+    if text.endswith("m"):
+        return max(30, int(float(text[:-1]) * 60))
+    if text.endswith("s"):
+        return max(30, int(float(text[:-1])))
+    return max(30, int(float(text)))
+
+
 def _cmd_watch(config: RadarConfig, args: argparse.Namespace) -> int:
     if args.browser:
         config.general.use_browser_fallback = True
+    if args.interval:
+        config.general.poll_interval_seconds = parse_interval_seconds(args.interval)
     only = [w.strip() for w in args.watchers.split(",") if w.strip()] if args.watchers else None
     runner = RadarRunner(config)
 
@@ -278,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_watch = sub.add_parser("watch", help="Run continuously in the background and ping on hot deals")
     p_watch.add_argument("--watchers", default="", help="Comma-separated subset of watchers")
+    p_watch.add_argument("--interval", default="", help="Polling interval override (e.g. 1h, 30m, 3600)")
     p_watch.add_argument("--browser", action="store_true", help="Enable local Playwright Chromium fallback for JS/403 pages")
     p_watch.add_argument("--dashboard", action="store_true", help="Also run local web dashboard on http://127.0.0.1:8765")
 

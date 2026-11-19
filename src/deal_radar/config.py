@@ -52,9 +52,22 @@ class NotificationsConfig:
     sound_enabled: bool = True
     console_enabled: bool = True
     discord_webhook_url: str = ""
+    discord_mention: str = ""
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     ntfy_url: str = ""
+    # Email (SMTP — e.g. Gmail with an App Password)
+    email_smtp_host: str = ""
+    email_smtp_port: int = 587
+    email_username: str = ""
+    email_password: str = ""
+    email_from: str = ""
+    email_to: str = ""
+    email_use_tls: bool = True
+    # Signal via signal-cli-rest-api (e.g. http://127.0.0.1:8080/v2/send)
+    signal_api_url: str = ""
+    signal_sender: str = ""
+    signal_recipient: str = ""
 
 
 @dataclass(slots=True)
