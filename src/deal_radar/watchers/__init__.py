@@ -1,4 +1,4 @@
-"""Registry of all available store watchers."""
+"""Registry of all 23 built-in Slovenian & EU store/aggregator watchers."""
 
 from __future__ import annotations
 
@@ -11,8 +11,20 @@ from .eu_shops import (
     AlternateDeWatcher,
     AlzaWatcher,
     AmazonDeWatcher,
+    AmazonEsWatcher,
+    AmazonFrWatcher,
+    AmazonItWatcher,
+    BpmPowerWatcher,
     ComputerUniverseWatcher,
+    CyberportWatcher,
+    GalaxusWatcher,
+    GeizhalsEuWatcher,
+    GpuTrackerEuWatcher,
     IdealoDeWatcher,
+    LdlcWatcher,
+    NotebooksbilligerWatcher,
+    ProshopWatcher,
+    ReicheltWatcher,
 )
 from .mimovrste import MimovrsteWatcher
 from .slovenian_shops import (
@@ -23,18 +35,34 @@ from .slovenian_shops import (
 )
 
 ALL_WATCHER_CLASSES: list[type[BaseWatcher]] = [
+    # Slovenian retailers & SI aggregator
     MimovrsteWatcher,
     CenejeWatcher,
     MlacomWatcher,
     FuntechWatcher,
     AnniWatcher,
     BigBangWatcher,
-    CasekingWatcher,
-    ComputerUniverseWatcher,
-    AmazonDeWatcher,
-    AlternateDeWatcher,
-    AlzaWatcher,
+    # Pan-EU GPU & hardware aggregators
+    GpuTrackerEuWatcher,
+    GeizhalsEuWatcher,
     IdealoDeWatcher,
+    # Amazon EU (all ship to Slovenia + Warehouse Deals)
+    AmazonDeWatcher,
+    AmazonItWatcher,
+    AmazonFrWatcher,
+    AmazonEsWatcher,
+    # Major EU retailers shipping to Slovenia
+    CasekingWatcher,
+    AlternateDeWatcher,
+    ComputerUniverseWatcher,
+    ProshopWatcher,
+    ReicheltWatcher,
+    NotebooksbilligerWatcher,
+    LdlcWatcher,
+    BpmPowerWatcher,
+    CyberportWatcher,
+    GalaxusWatcher,
+    AlzaWatcher,
 ]
 
 

@@ -1,5 +1,6 @@
 """Flagship Mimovrste.com watcher — tracks regular listings, Open-Box ('Odprta embalaža'),
-Black Friday / promo code lists, first-party fulfillment, and deep product inspection."""
+Black Friday / promo code lists, verified RX 9070 XT product pages, first-party fulfillment,
+and linked open-box sibling variants."""
 
 from __future__ import annotations
 
@@ -27,13 +28,12 @@ from .base import (
 
 _MIMOVRSTE_SEARCH_URLS = [
     "https://www.mimovrste.com/iskanje?s=rx+9070+xt",
-    "https://www.mimovrste.com/graficne-kartice-amd?s=9070+xt",
+    "https://www.mimovrste.com/graficne-kartice-amd",
 ]
 
 _MIMOVRSTE_OPEN_BOX_URLS = [
     "https://www.mimovrste.com/kampanja/odprta-embalaza?category=graficne-kartice-gaming",
     "https://www.mimovrste.com/kampanja/artikli-z-odprto-embalazo?category=pc-komponente",
-    "https://www.mimovrste.com/iskanje?s=9070+xt+odprta+embalaza",
 ]
 
 _MIMOVRSTE_PROMO_URLS = [
@@ -41,10 +41,22 @@ _MIMOVRSTE_PROMO_URLS = [
     "https://www.mimovrste.com/kampanja/black-friday?s=9070+xt",
 ]
 
+# Verified live Mimovrste RX 9070 XT product URLs (checked for price drops, promo codes, & open-box siblings)
+_MIMOVRSTE_SEED_PRODUCTS = [
+    "https://www.mimovrste.com/graficne-kartice-amd/sapphire-pure-amd-radeon-rx-9070-xt-gaming-oc-graficna-kartica-16gb-gddr6-11348-02-20g",
+    "https://www.mimovrste.com/graficne-kartice-amd/sapphire-pulse-amd-radeon-rx-9070-xt-gaming-graficna-kartica-16gb-gddr6-11348-03-20g",
+    "https://www.mimovrste.com/graficne-kartice-amd/sapphire-pulse-gaming-radeon-rx-9070-xt-100161811702",
+    "https://www.mimovrste.com/graficne-kartice-amd/xfx-swift-amd-radeon-rx-9070-xt-white-triple-fan-gaming-edition-graficna-kartica-16gb-gddr6-rx-97tswf3w9",
+    "https://www.mimovrste.com/graficne-kartice-amd/xfx-quicksilver-amd-radeon-rx-9070-xt-gaming-edition-graficna-kartica-16gb-gddr6-rx-97tqickb9",
+    "https://www.mimovrste.com/graficne-kartice-amd/xfx-mercury-radeon-graficna-kartica-rx-9070-xt-oc-gaming-edition-rgb-16gb-gddr6-pcie-50-rx-97trgbbb9",
+    "https://www.mimovrste.com/graficne-kartice-amd/asus-prime-radeon-rx-9070-xt-gddr6-100161871627",
+]
+
 _SKU_RE = re.compile(r"Številka\s*:\s*(\d{5,14})", re.IGNORECASE)
 _SAVE_RE = re.compile(r"Prihranite\s+(\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})?)\s*€", re.IGNORECASE)
 _FIRST_PARTY_RE = re.compile(r"(?i)dostava\s+mimovrste|partner\s*:\s*mimovrste")
 _MARKETPLACE_RE = re.compile(r"(?i)partnerska\s+dostava|dobavitelj\s*:\s*(?!mimovrste)")
+_SLUG_9070_XT_RE = re.compile(r"(?i)9070-?xt")
 
 
 def parse_mimovrste_product_page(html: str, url: str) -> tuple[RawOffer | None, list[str]]:
@@ -71,10 +83,9 @@ def parse_mimovrste_product_page(html: str, url: str) -> tuple[RawOffer | None, 
             for marker in ("odprta-embalaza", "odprta embalaža", "razpakirano", "poskodovana-embalaza")
         ):
             full_link = urljoin(url, href)
-            if full_link != url and full_link not in open_box_links:
+            if full_link != url and full_link not in open_box_links and _SLUG_9070_XT_RE.search(f"{href} {anchor_text}"):
                 open_box_links.append(full_link)
 
-    # Prefer JSON-LD baseline if available
     ld_offers = parse_json_ld_products(
         soup,
         store="mimovrste",
@@ -91,10 +102,8 @@ def parse_mimovrste_product_page(html: str, url: str) -> tuple[RawOffer | None, 
     sku_match = _SKU_RE.search(full_text)
     sku = sku_match.group(1) if sku_match else (ld_offers[0].sku if ld_offers else "")
 
-    # Condition detection (title + badges + URL)
     cond, cond_note = detect_condition(f"{title} {url} {full_text[:2500]}")
 
-    # Fulfillment detection: Mimovrste promo codes & SMART! shipping apply to Mimovrste-fulfilled items
     fulfilled_by_store: bool | None = None
     seller_name = "Mimovrste"
     if _FIRST_PARTY_RE.search(full_text):
@@ -104,7 +113,6 @@ def parse_mimovrste_product_page(html: str, url: str) -> tuple[RawOffer | None, 
         fulfilled_by_store = False
         seller_name = "Mimovrste Marketplace"
 
-    # Extract listed price & original price
     listed_price = ld_offers[0].listed_price_eur if ld_offers else None
     original_price: float | None = None
 
@@ -120,15 +128,13 @@ def parse_mimovrste_product_page(html: str, url: str) -> tuple[RawOffer | None, 
             if "€" in t:
                 price_box_texts.append(t)
 
-    # Look specifically for Mimovrste's "Prihranite X €" + "867,40 € 1.000,69 €"
-    all_prices = extract_all_prices_eur(" ".join(price_box_texts) or full_text[:4000])
+    all_prices = extract_all_prices_eur(" ".join(price_box_texts) or full_text[:4500])
     if listed_price is None and all_prices:
         listed_price = all_prices[0]
 
     if listed_price is None:
         return None, open_box_links
 
-    # Crossed-out / 30-day pre-discount price
     for sel in ("del", "s", "[class*='old']", "[class*='rrp']", "[class*='cross']", "[class*='before']"):
         for node in soup.select(sel):
             p = parse_price_eur(node.get_text(" ", strip=True))
@@ -142,22 +148,18 @@ def parse_mimovrste_product_page(html: str, url: str) -> tuple[RawOffer | None, 
             if saved is not None:
                 original_price = round(listed_price + saved, 2)
         elif len(all_prices) >= 2:
-            # Take the next price right after listed_price if it is reasonably close (not Marketplace price)
             for p in all_prices[1:4]:
                 if listed_price + 5.0 < p <= listed_price * 1.6:
                     original_price = p
                     break
 
-    # Stock detection
     in_stock, stock_text = infer_stock_from_text(full_text[:4500], default=True)
     if ld_offers and not ld_offers[0].in_stock and "v košarico" not in full_text[:3500].lower():
         in_stock = False
         stock_text = stock_text or ld_offers[0].stock_text
 
-    # On-page promo codes (e.g. Black Friday -20% code directly on the product page!)
     promos = extract_promos_from_text(full_text, store="mimovrste")
 
-    # Free delivery tag
     shipping_eur: float | None = None
     if "brezplačna dostava" in full_text[:4500].lower():
         shipping_eur = 0.0
@@ -183,6 +185,22 @@ def parse_mimovrste_product_page(html: str, url: str) -> tuple[RawOffer | None, 
         image_url=image_url,
     )
     return offer, open_box_links
+
+
+def discover_mimovrste_product_links(html: str, page_url: str) -> list[str]:
+    """Extract any Mimovrste product URLs whose slug or anchor text mentions 9070 XT."""
+    soup = BeautifulSoup(html, "lxml")
+    found: list[str] = []
+    for a in soup.find_all("a", href=True):
+        href = str(a["href"])
+        txt = a.get_text(" ", strip=True)
+        if "/graficne-kartice" in href.lower() and (
+            _SLUG_9070_XT_RE.search(href) or is_rx_9070_xt(txt)
+        ):
+            full = urljoin(page_url, href.split("?")[0])
+            if full not in found and full.count("/") >= 4:
+                found.append(full)
+    return found
 
 
 def parse_mimovrste_listing_page(
@@ -219,7 +237,6 @@ def parse_mimovrste_listing_page(
         if co.offer_key not in by_key:
             by_key[co.offer_key] = co
         else:
-            # Enrich JSON-LD offer with card original price / open-box / promos
             existing = by_key[co.offer_key]
             if existing.original_price_eur is None and co.original_price_eur is not None:
                 existing.original_price_eur = co.original_price_eur
@@ -229,7 +246,6 @@ def parse_mimovrste_listing_page(
             if co.detected_promos:
                 existing.detected_promos.extend(co.detected_promos)
 
-    # Tag first-party vs marketplace if text indicates it
     result = list(by_key.values())
     for item in result:
         if item.condition == Condition.NEW and default_condition != Condition.NEW:
@@ -238,7 +254,7 @@ def parse_mimovrste_listing_page(
 
 
 class MimovrsteWatcher(BaseWatcher):
-    """Watches Mimovrste regular, Open-Box ('Odprta embalaža'), and promo/Black Friday listings."""
+    """Watches Mimovrste regular, Open-Box ('Odprta embalaža'), promo lists, and verified product pages."""
 
     name = "mimovrste"
     display_name = "Mimovrste.com (SI)"
@@ -254,6 +270,7 @@ class MimovrsteWatcher(BaseWatcher):
             urls_to_scan.extend((u, Condition.NEW) for u in _MIMOVRSTE_PROMO_URLS)
 
         discovered: dict[str, RawOffer] = {}
+        product_urls_to_inspect: list[str] = []
         urls_checked = 0
         blocked_count = 0
         errors: list[str] = []
@@ -274,23 +291,25 @@ class MimovrsteWatcher(BaseWatcher):
                 if existing is None or offer.listed_price_eur < existing.listed_price_eur:
                     discovered[offer.offer_key] = offer
 
-        # Deep-inspect top cheapest & open-box candidate product pages to catch
-        # on-page promo codes (like -20% Black Friday), fulfillment, and sibling open-box links!
-        deep_limit = int(self.options.get("deep_inspect_limit", 15))
-        candidates = sorted(
-            discovered.values(),
-            key=lambda o: (0 if o.condition.is_open_box_like else 1, o.listed_price_eur),
-        )[:deep_limit]
+            for link in discover_mimovrste_product_links(resp.text, resp.url):
+                if link not in product_urls_to_inspect:
+                    product_urls_to_inspect.append(link)
 
+        # Always include verified Mimovrste RX 9070 XT product pages as reliable deep-inspect seeds
+        for seed in _MIMOVRSTE_SEED_PRODUCTS:
+            if seed not in product_urls_to_inspect:
+                product_urls_to_inspect.append(seed)
+
+        deep_limit = int(self.options.get("deep_inspect_limit", 12))
         extra_open_box_urls: list[str] = []
         inspected_urls: set[str] = set()
 
-        for cand in candidates:
-            if cand.url in inspected_urls:
+        for cand_url in product_urls_to_inspect[:deep_limit]:
+            if cand_url in inspected_urls:
                 continue
-            inspected_urls.add(cand.url)
+            inspected_urls.add(cand_url)
             urls_checked += 1
-            resp = await fetcher.get(cand.url)
+            resp = await fetcher.get(cand_url)
             if not resp.ok:
                 continue
             detailed, sibling_links = parse_mimovrste_product_page(resp.text, resp.url)
@@ -300,8 +319,8 @@ class MimovrsteWatcher(BaseWatcher):
                 if link not in inspected_urls and link not in extra_open_box_urls:
                     extra_open_box_urls.append(link)
 
-        # Follow discovered sibling open-box URLs (huge alpha for catching stealth open-box drops!)
-        for ob_url in extra_open_box_urls[:8]:
+        # Follow any discovered sibling open-box URLs
+        for ob_url in extra_open_box_urls[:6]:
             urls_checked += 1
             resp = await fetcher.get(ob_url)
             if not resp.ok:

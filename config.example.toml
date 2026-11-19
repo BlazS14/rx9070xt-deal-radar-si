@@ -117,6 +117,14 @@ enabled = true
 [watchers.bigbang]
 enabled = true
 
+[watchers.gputracker_eu]
+enabled = true
+shipping_to_slovenia_eur = 15.99
+
+[watchers.geizhals_eu]
+enabled = true
+shipping_to_slovenia_eur = 14.99
+
 [watchers.caseking]
 enabled = true
 shipping_to_slovenia_eur = 15.99
@@ -133,10 +141,53 @@ enabled = true
 shipping_to_slovenia_eur = 0.0
 scan_warehouse_deals = true
 
+[watchers.amazon_it]
+enabled = true
+shipping_to_slovenia_eur = 9.99
+scan_warehouse_deals = true
+
+[watchers.amazon_fr]
+enabled = true
+shipping_to_slovenia_eur = 11.99
+scan_warehouse_deals = true
+
+[watchers.amazon_es]
+enabled = true
+shipping_to_slovenia_eur = 12.99
+scan_warehouse_deals = true
+
 [watchers.alternate_de]
 enabled = true
 shipping_to_slovenia_eur = 16.99
 scan_outlet = true
+
+[watchers.proshop]
+enabled = true
+shipping_to_slovenia_eur = 14.99
+
+[watchers.reichelt]
+enabled = true
+shipping_to_slovenia_eur = 9.95
+
+[watchers.notebooksbilliger]
+enabled = true
+shipping_to_slovenia_eur = 14.99
+
+[watchers.ldlc]
+enabled = true
+shipping_to_slovenia_eur = 15.95
+
+[watchers.bpm_power]
+enabled = true
+shipping_to_slovenia_eur = 14.90
+
+[watchers.cyberport]
+enabled = true
+shipping_to_slovenia_eur = 14.99
+
+[watchers.galaxus]
+enabled = true
+shipping_to_slovenia_eur = 14.99
 
 [watchers.alza]
 enabled = true

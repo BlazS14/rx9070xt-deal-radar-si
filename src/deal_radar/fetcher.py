@@ -263,7 +263,11 @@ class PoliteFetcher:
                 wait_until="domcontentloaded",
                 timeout=int(self.timeout_seconds * 1000),
             )
-            await page.wait_for_timeout(2200)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=4500)
+            except Exception:
+                pass
+            await page.wait_for_timeout(1200)
             html = await page.content()
             status = resp.status if resp else 200
             final_url = page.url

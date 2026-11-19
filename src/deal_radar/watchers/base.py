@@ -25,14 +25,14 @@ from ..models import Condition, RawOffer, WatcherResult
 
 _OOS_PATTERNS = re.compile(
     r"(?i)trenutno\s+ni\s+na\s+zalogi|ni\s+na\s+zalogi|razprodano|ni\s+dobavljivo|"
-    r"out\s+of\s+stock|nicht\s+auf\s+lager|ausverkauft|derzeit\s+nicht\s+verfügbar|"
-    r"sold\s+out|currently\s+unavailable|nedostupno"
+    r"out\s+of\s+stock|not\s+in\s+stock|nicht\s+auf\s+lager|ausverkauft|derzeit\s+nicht\s+verfügbar|"
+    r"sold\s+out|currently\s+unavailable|nedostupno|non\s+disponibile|rupture\s+de\s+stock|agotado"
 )
 
 _IN_STOCK_PATTERNS = re.compile(
     r"(?i)\bna\s+zalogi\b|v\s+košarico|dodaj\s+v\s+košarico|takoj\s+na\s+voljo|"
-    r"\bin\s+stock\b|add\s+to\s+(?:basket|cart)|auf\s+lager|sofort\s+lieferbar|versandfertig|"
-    r"na\s+voljo\s+\d|dostava\s+s\s+pošto"
+    r"\bin\s+stock\b|add\s+to\s+(?:basket|cart)|auf\s+lager|sofort\s+lieferbar|sofort\s+verfügbar|"
+    r"versandfertig|na\s+voljo\s+\d|dostava\s+s\s+pošto|en\s+stock|disponibile"
 )
 
 
@@ -240,12 +240,20 @@ def parse_generic_product_cards(
                     cards.append(parent)
 
     for card in cards:
+        card_text = card.get_text(" ", strip=True)
         link = None
         title = ""
-        for a in card.find_all("a", href=True):
+
+        # Collect candidate anchors (including the card itself if the card IS an <a> tag, e.g. Alternate.de)
+        anchors: list[Tag] = []
+        if card.name == "a" and card.get("href"):
+            anchors.append(card)
+        anchors.extend(card.find_all("a", href=True))
+
+        for a in anchors:
             candidate = a.get("title") or a.get_text(" ", strip=True)
             candidate_str = str(candidate).strip()
-            if is_rx_9070_xt(candidate_str):
+            if is_rx_9070_xt(candidate_str) and len(candidate_str) >= 16:
                 link = a
                 title = candidate_str
                 break
@@ -254,14 +262,22 @@ def parse_generic_product_cards(
             heading = card.find(["h1", "h2", "h3", "h4"])
             if heading:
                 candidate_str = heading.get_text(" ", strip=True)
-                if is_rx_9070_xt(candidate_str):
+                if is_rx_9070_xt(candidate_str) and len(candidate_str) >= 16:
                     title = candidate_str
-                    link = card.find("a", href=True)
+                    link = anchors[0] if anchors else None
+
+        # Sibling-description fallback (e.g. Funtech puts "Sapphire Radeon RX9070XT ..." in a <p>/<div> next to <a>)
+        if link is None and anchors and is_rx_9070_xt(card_text):
+            for node in card.find_all(["h2", "h3", "h4", "p", "div", "span"]):
+                txt = node.get_text(" ", strip=True)
+                if 16 <= len(txt) <= 180 and is_rx_9070_xt(txt):
+                    title = txt
+                    link = anchors[0]
+                    break
 
         if not title or link is None:
             continue
 
-        card_text = card.get_text(" ", strip=True)
         if not is_rx_9070_xt(title, card_text):
             continue
 

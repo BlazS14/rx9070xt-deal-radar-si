@@ -207,3 +207,61 @@ def test_discover_9070_xt_filter_links() -> None:
     links = discover_9070_xt_filter_links(html, "https://funtech.si/category/graficne-kartice/")
     assert links == ["https://funtech.si/category/graficne-kartice/?gpu=rx-9070-xt"]
 
+
+def test_gputracker_parser_tracks_shop_and_stock() -> None:
+    from deal_radar.watchers.eu_shops import parse_gputracker_page
+
+    html = """
+    <html><body>
+      <div class="stock-card">
+        <h3>Sapphire Pulse AMD Radeon RX 9070 XT 16GB GDDR6</h3>
+        <span>coolmod.com</span>
+        <span>717 €</span>
+        <span>Not in stock</span>
+        <a href="https://coolmod.com/offer-1">View offer</a>
+      </div>
+      <div class="stock-card">
+        <h3>ASUS Prime Radeon RX 9070 XT 16GB GDDR6 OC Edition</h3>
+        <span>amazon.fr</span>
+        <span>659 €</span>
+        <span>In stock</span>
+        <a href="https://amazon.fr/dp/B001">View offer</a>
+      </div>
+    </body></html>
+    """
+    offers = parse_gputracker_page(
+        html, "https://www.gputracker.eu/en/search/category/1/graphics-cards/facet/2/graphics-chip/amd-rx-9070-xt"
+    )
+    assert len(offers) == 2
+    by_seller = {o.seller_name: o for o in offers}
+    assert by_seller["coolmod.com"].in_stock is False
+    assert by_seller["coolmod.com"].listed_price_eur == 717.00
+    assert by_seller["amazon.fr"].in_stock is True
+    assert by_seller["amazon.fr"].listed_price_eur == 659.00
+
+
+def test_alternate_anchor_root_card_parser() -> None:
+    from deal_radar.watchers.eu_shops import AlternateDeWatcher
+
+    html = """
+    <html><body>
+      <a class="productBox" href="/SAPPHIRE/Radeon-RX-9070-XT-Pulse/html/product/100108015">
+        <div class="product-name">SAPPHIRE Radeon RX 9070 XT Pulse, Grafikkarte</div>
+        <span class="price">€ 749,00</span>
+        <span>Sofort verfügbar</span>
+      </a>
+    </body></html>
+    """
+    watcher = AlternateDeWatcher(RadarConfig())
+    offers = watcher.parse_html(
+        html,
+        "https://www.alternate.de/Grafikkarten/RX-9070-XT",
+        shipping_eur=16.99,
+        default_condition=Condition.NEW,
+    )
+    assert len(offers) == 1
+    assert offers[0].listed_price_eur == 749.00
+    assert offers[0].in_stock is True
+    assert offers[0].url.endswith("/100108015")
+
+
