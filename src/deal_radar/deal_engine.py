@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .config import RadarConfig
 from .matching import extract_brand_and_variant
@@ -293,7 +293,7 @@ class DealEngine:
 
         # Cooldown / deduplication guard
         if last_alerted_at is not None and last_alerted_price_eur is not None:
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             cooldown = timedelta(hours=alerts.cooldown_hours)
             extra_drop = last_alerted_price_eur - offer.effective_total_eur
             if (now - last_alerted_at) < cooldown and extra_drop < alerts.re_alert_extra_drop_eur and not restocked:

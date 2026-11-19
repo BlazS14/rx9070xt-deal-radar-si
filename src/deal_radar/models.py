@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 
 
-class Condition(StrEnum):
+class Condition(str, Enum):
     NEW = "new"
     OPEN_BOX = "open_box"
     DAMAGED_BOX = "damaged_box"
@@ -32,7 +32,7 @@ class Condition(StrEnum):
         }[self]
 
 
-class DealTier(StrEnum):
+class DealTier(str, Enum):
     STEAL = "STEAL"
     HOT = "HOT"
     GOOD = "GOOD"
@@ -109,7 +109,7 @@ class EvaluatedOffer:
     savings_vs_reference_eur: float
     deal_score: int
     tier: DealTier
-    seen_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    seen_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def store(self) -> str:
@@ -173,7 +173,7 @@ class AlertEvent:
     previous_total_eur: float | None = None
     all_time_low_eur: float | None = None
     is_new_listing: bool = False
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def primary_reason(self) -> str:

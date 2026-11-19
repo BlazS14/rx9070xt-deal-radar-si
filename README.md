@@ -32,18 +32,29 @@ Built specifically to catch **stacked deals** that normal price trackers miss â€
 
 ## Quick Start (Windows / macOS / Linux)
 
-Requires **Python 3.11+**.
+Requires **Python 3.10+**.
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/BlazS14/rx9070xt-deal-radar-si.git
+cd rx9070xt-deal-radar-si
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+```
+
+*(If PowerShell blocks script activation, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or run `.\.venv\Scripts\pip.exe install -e .` and `.\.venv\Scripts\deal-radar.exe` directly.)*
+
+### macOS / Linux
 
 ```bash
 git clone https://github.com/BlazS14/rx9070xt-deal-radar-si.git
 cd rx9070xt-deal-radar-si
 
-python -m venv .venv
-# Windows PowerShell:
-.venv\Scripts\Activate.ps1
-# macOS / Linux:
-# source .venv/bin/activate
-
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 

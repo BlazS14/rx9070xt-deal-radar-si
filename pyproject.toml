@@ -7,7 +7,7 @@ name = "rx9070xt-deal-radar-si"
 version = "0.1.0"
 description = "Local PC deal watcher & alert radar for AMD Radeon RX 9070 XT deals shipping to Slovenia (tracks stacked discounts, open-box/B-ware, and promo codes)."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 keywords = ["gpu", "rx-9070-xt", "deal-tracker", "slovenia", "mimovrste", "price-alerts"]
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
     "beautifulsoup4>=4.12.3",
     "lxml>=5.2.0",
     "rich>=13.7.0",
+    "tomli>=2.0.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +42,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 110
-target-version = "py311"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "RUF"]

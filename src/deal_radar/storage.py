@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -141,7 +141,7 @@ class DealStorage:
             try:
                 last_alerted_at = datetime.fromisoformat(alert_row["created_at"])
                 if last_alerted_at.tzinfo is None:
-                    last_alerted_at = last_alerted_at.replace(tzinfo=UTC)
+                    last_alerted_at = last_alerted_at.replace(tzinfo=timezone.utc)
             except ValueError:
                 last_alerted_at = None
 
@@ -163,7 +163,7 @@ class DealStorage:
         )
 
     def upsert_offer(self, offer: EvaluatedOffer) -> None:
-        now_iso = offer.seen_at.astimezone(UTC).isoformat()
+        now_iso = offer.seen_at.astimezone(timezone.utc).isoformat()
         promo_code = offer.applied_promo.code if offer.applied_promo else None
         layers_json = json.dumps(
             [
@@ -327,12 +327,12 @@ class DealStorage:
                     event.offer.tier.value,
                     json.dumps(event.reasons),
                     event.offer.discount_summary(),
-                    event.created_at.astimezone(UTC).isoformat(),
+                    event.created_at.astimezone(timezone.utc).isoformat(),
                 ),
             )
 
     def record_watcher_run(self, result: WatcherResult) -> None:
-        now_iso = datetime.now(UTC).isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
                 """

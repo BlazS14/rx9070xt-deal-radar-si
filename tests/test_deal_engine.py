@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from deal_radar.config import PromoRuleConfig, RadarConfig
 from deal_radar.deal_engine import DealEngine
@@ -152,7 +152,7 @@ def test_alert_cooldown_and_extra_drop_override() -> None:
         ev,
         previous_total_eur=665.99,
         all_time_low_eur=665.99,
-        last_alerted_at=datetime.now(UTC) - timedelta(minutes=30),
+        last_alerted_at=datetime.now(timezone.utc) - timedelta(minutes=30),
         last_alerted_price_eur=665.99,
         was_in_stock=True,
     )
@@ -163,7 +163,7 @@ def test_alert_cooldown_and_extra_drop_override() -> None:
         ev,
         previous_total_eur=685.00,
         all_time_low_eur=685.00,
-        last_alerted_at=datetime.now(UTC) - timedelta(minutes=30),
+        last_alerted_at=datetime.now(timezone.utc) - timedelta(minutes=30),
         last_alerted_price_eur=685.00,
         was_in_stock=True,
     )
