@@ -1,0 +1,170 @@
+# ==============================================================================
+# RX 9070 XT Deal Radar (Slovenia) — Configuration
+# Copy this file to `config.toml` (or run `deal-radar init`) and customize.
+# `config.toml` is gitignored so your Discord/Telegram tokens stay private.
+# ==============================================================================
+
+[general]
+# How often to scan all enabled watchers (in seconds). 180-300s is polite & fast.
+poll_interval_seconds = 240
+# Random jitter (+/- seconds) added to each cycle to avoid robotic patterns
+poll_jitter_seconds = 25
+# Path to local SQLite database for price history & alert deduplication
+db_path = "data/deals.db"
+# Maximum concurrent watchers running in parallel
+max_concurrency = 4
+# Request timeout per HTTP call
+request_timeout_seconds = 20.0
+# Optional Playwright headless browser fallback for JS-heavy stores
+# Install with: pip install ".[browser]" && playwright install chromium
+use_browser_fallback = false
+# Only alert on in-stock items (recommended: true)
+only_in_stock = true
+# Include open-box / B-ware / warehouse return deals (HIGHLY recommended!)
+include_open_box = true
+
+[alerts]
+# Ping immediately when effective landed price to Slovenia is at or below this (EUR)
+target_price_eur = 680.0
+# "DROP EVERYTHING / INSTANT BUY" tier (e.g., Mimovrste stacked deal ~607 EUR)
+steal_price_eur = 630.0
+# Reference typical market price in Slovenia/EU for computing deal % off (EUR)
+reference_market_price_eur = 820.0
+# Also ping when ANY tracked RX 9070 XT drops by at least this much vs previous seen price
+min_price_drop_eur = 25.0
+min_price_drop_pct = 5.0
+# Also ping whenever a brand-new Open-Box / B-Ware / Warehouse listing appears below this cap
+open_box_alert_ceiling_eur = 740.0
+# Also ping if total stacked discount (markdown + open-box + promo code) >= this %
+stacked_discount_alert_pct = 18.0
+# Cooldown before re-alerting the exact same offer at the same (or higher) price (hours)
+cooldown_hours = 6.0
+# Re-alert immediately even during cooldown if price drops further by at least this (EUR)
+re_alert_extra_drop_eur = 10.0
+
+[shipping]
+# Default estimated shipping cost to Slovenia (EUR) if a store doesn't state it explicitly.
+# Local Slovenian shops often offer free pickup or free shipping above 50-100 EUR.
+default_slovenia_shipping_eur = 4.90
+default_eu_shipping_eur = 15.99
+# Set true if you have Mimovrste SMART! (free shipping on Mimovrste-fulfilled orders)
+mimovrste_smart = true
+
+[notifications]
+# Native OS desktop popup (Windows Toast / macOS Notification / Linux notify-send)
+desktop_enabled = true
+# Audible terminal/OS chime on steal deals
+sound_enabled = true
+# Rich console alert output
+console_enabled = true
+
+# Optional: Discord Webhook (Server Settings -> Integrations -> Webhooks -> Copy URL)
+discord_webhook_url = ""
+
+# Optional: Telegram Bot (create via @BotFather, get chat_id via @userinfobot)
+telegram_bot_token = ""
+telegram_chat_id = ""
+
+# Optional: ntfy.sh (zero-signup mobile + desktop push! Pick a secret topic name)
+# Example: "https://ntfy.sh/blaz-rx9070xt-radar-9482"
+ntfy_url = ""
+
+[dashboard]
+# Built-in local web UI (`deal-radar dashboard` or `deal-radar watch --dashboard`)
+host = "127.0.0.1"
+port = 8765
+
+# ==============================================================================
+# Store Watchers (all ship to Slovenia or aggregate Slovenia-shipping stores)
+# ==============================================================================
+[watchers.mimovrste]
+enabled = true
+# Also scan Mimovrste's dedicated Open-Box ("Odprta embalaža") campaign pages
+scan_open_box_campaign = true
+# Also scan Mimovrste active promo / Black Friday discount lists
+scan_promo_lists = true
+# Deep-inspect top candidate product pages to catch on-page promo codes & open-box links
+deep_inspect_limit = 15
+
+[watchers.ceneje]
+enabled = true
+
+[watchers.mlacom]
+enabled = true
+
+[watchers.funtech]
+enabled = true
+
+[watchers.anni]
+enabled = true
+
+[watchers.bigbang]
+enabled = true
+
+[watchers.caseking]
+enabled = true
+shipping_to_slovenia_eur = 15.99
+scan_sale_outlet = true
+
+[watchers.computeruniverse]
+enabled = true
+shipping_to_slovenia_eur = 16.90
+scan_bware = true
+
+[watchers.amazon_de]
+enabled = true
+# Amazon.de ships free to Slovenia on eligible orders >= 59 EUR
+shipping_to_slovenia_eur = 0.0
+scan_warehouse_deals = true
+
+[watchers.alza]
+enabled = true
+shipping_to_slovenia_eur = 9.90
+scan_open_box = true
+
+[watchers.idealo_de]
+enabled = true
+shipping_to_slovenia_eur = 15.99
+
+# ==============================================================================
+# Active Seasonal / Storewide Promo Codes (Stacking Rules!)
+# Add any active Black Friday, Cyber Monday, newsletter, or card promo codes here.
+# The deal engine automatically checks eligibility (e.g., Mimovrste-fulfilled only,
+# open-box compatibility) and computes the true stacked checkout price!
+# ==============================================================================
+[[promos]]
+name = "Mimovrste Example Black Friday -20% (disabled template)"
+store = "mimovrste"
+code = "BF20"
+percent_off = 20.0
+fixed_off_eur = 0.0
+# Mimovrste promo codes apply only to items fulfilled by Mimovrste (not Marketplace)
+requires_first_party = true
+stacks_with_sale = true
+stacks_with_open_box = true
+min_price_eur = 25.0
+enabled = false
+
+[[promos]]
+name = "Amazon.de Retourenkauf Extra -20% Event (disabled template)"
+store = "amazon_de"
+code = "AUTO_CHECKOUT"
+percent_off = 20.0
+fixed_off_eur = 0.0
+requires_first_party = false
+only_conditions = ["open_box", "b_ware", "used_like_new", "refurbished"]
+stacks_with_sale = true
+stacks_with_open_box = true
+min_price_eur = 50.0
+enabled = false
+
+# ==============================================================================
+# Custom URL Watchers (optional)
+# Drop ANY specific GPU product page or outlet URL from any shop to monitor it!
+# ==============================================================================
+# [[custom_urls]]
+# name = "Mimovrste Sapphire PURE 9070 XT"
+# store = "mimovrste"
+# url = "https://www.mimovrste.com/graficne-kartice-amd/sapphire-pure-amd-radeon-rx-9070-xt-gaming-oc-graficna-kartica-16gb-gddr6-11348-02-20g"
+# shipping_to_slovenia_eur = 0.0
+# ships_to_slovenia = true

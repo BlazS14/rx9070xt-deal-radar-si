@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rx9070xt-deal-radar-si"
+version = "0.1.0"
+description = "Local PC deal watcher & alert radar for AMD Radeon RX 9070 XT deals shipping to Slovenia (tracks stacked discounts, open-box/B-ware, and promo codes)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["gpu", "rx-9070-xt", "deal-tracker", "slovenia", "mimovrste", "price-alerts"]
+dependencies = [
+    "httpx[http2]>=0.27.0",
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.2.0",
+    "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+browser = [
+    "playwright>=1.48.0",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.0",
+]
+
+[project.scripts]
+deal-radar = "deal_radar.cli:main"
+rx9070xt-radar = "deal_radar.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "RUF"]
+ignore = ["E501"]
