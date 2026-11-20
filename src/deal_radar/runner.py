@@ -62,34 +62,46 @@ class RadarRunner:
             results = await asyncio.gather(*(_run_one(w) for w in watchers))
 
         summary.watcher_results = list(results)
+        prev_market_best = self.storage.get_cheapest_in_stock_eur()
 
+        # Pass 1: evaluate every offer across all watchers so we know the real cheapest in-stock price
+        evaluated_all: list[EvaluatedOffer] = []
         for res in results:
             self.storage.record_watcher_run(res)
             for raw in res.offers:
-                evaluated = self.engine.evaluate(raw)
-                history = self.storage.get_offer_state(evaluated.store, evaluated.offer_key)
+                evaluated_all.append(self.engine.evaluate(raw))
 
-                event = self.engine.should_alert(
-                    evaluated,
-                    previous_total_eur=history.previous_total_eur,
-                    all_time_low_eur=history.all_time_low_eur,
-                    last_alerted_at=history.last_alerted_at,
-                    last_alerted_price_eur=history.last_alerted_price_eur,
-                    was_in_stock=history.was_in_stock,
-                )
+        in_stock_prices = [o.effective_total_eur for o in evaluated_all if o.in_stock and o.raw.ships_to_slovenia]
+        if prev_market_best is not None:
+            in_stock_prices.append(prev_market_best)
+        market_best_eur = min(in_stock_prices) if in_stock_prices else None
 
-                self.storage.upsert_offer(evaluated)
-                summary.evaluated_offers.append(evaluated)
-
-                if event is not None:
-                    self.storage.record_alert(event)
-                    summary.alerts_triggered.append(event)
-                    if send_notifications:
-                        await self.dispatcher.notify(event)
-
-        summary.evaluated_offers.sort(
+        # Pass 2: compare against history + global market_best_eur, persist, and dispatch only true top deals
+        evaluated_all.sort(
             key=lambda o: (0 if o.in_stock else 1, o.effective_total_eur, -o.deal_score)
         )
+        for evaluated in evaluated_all:
+            history = self.storage.get_offer_state(evaluated.store, evaluated.offer_key)
+            event = self.engine.should_alert(
+                evaluated,
+                previous_total_eur=history.previous_total_eur,
+                all_time_low_eur=history.all_time_low_eur,
+                last_alerted_at=history.last_alerted_at,
+                last_alerted_price_eur=history.last_alerted_price_eur,
+                was_in_stock=history.was_in_stock,
+                market_best_eur=market_best_eur,
+                previous_market_best_eur=prev_market_best,
+            )
+
+            self.storage.upsert_offer(evaluated)
+            summary.evaluated_offers.append(evaluated)
+
+            if event is not None:
+                self.storage.record_alert(event)
+                summary.alerts_triggered.append(event)
+                if send_notifications:
+                    await self.dispatcher.notify(event)
+
         return summary
 
     async def watch_forever(

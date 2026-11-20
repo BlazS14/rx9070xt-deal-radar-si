@@ -254,7 +254,10 @@ def test_alternate_anchor_root_card_parser() -> None:
     html = """
     <html><body>
       <a class="productBox" href="/SAPPHIRE/Radeon-RX-9070-XT-Pulse/html/product/100108015">
+        <span class="badge">Spare € 257,00</span>
         <div class="product-name">SAPPHIRE Radeon RX 9070 XT Pulse, Grafikkarte</div>
+        <div class="specs">HDMI 2.1, 2x DisplayPort 2.1, PCIe 5.0 x16</div>
+        <del>€ 1.006,00</del>
         <span class="price">€ 749,00</span>
         <span>Sofort verfügbar</span>
       </a>
@@ -268,8 +271,10 @@ def test_alternate_anchor_root_card_parser() -> None:
         default_condition=Condition.NEW,
     )
     assert len(offers) == 1
+    assert offers[0].title == "SAPPHIRE Radeon RX 9070 XT Pulse, Grafikkarte"
     assert offers[0].listed_price_eur == 749.00
     assert offers[0].in_stock is True
     assert offers[0].url.endswith("/100108015")
+
 
 

@@ -276,13 +276,40 @@ def parse_generic_product_cards(
             anchors.append(card)
         anchors.extend(card.find_all("a", href=True))
 
-        for a in anchors:
-            candidate = a.get("title") or a.get_text(" ", strip=True)
-            candidate_str = str(candidate).strip()
-            if is_rx_9070_xt(candidate_str) and len(candidate_str) >= 16:
-                link = a
-                title = candidate_str
-                break
+        # For <a>-root cards (like Alternate.de), check compact inner name/heading/img-alt first
+        # so the title doesn't dump the entire spec sheet + prices!
+        if card.name == "a" and card.get("href"):
+            for sel in (
+                "[class*='product-name']",
+                "[class*='productName']",
+                "[class*='title']",
+                "h2",
+                "h3",
+                "h4",
+            ):
+                node = card.select_one(sel)
+                if node:
+                    cand = node.get_text(" ", strip=True)
+                    if 16 <= len(cand) <= 160 and is_rx_9070_xt(cand):
+                        title = cand
+                        link = card
+                        break
+            if not title:
+                img_alt = card.find("img", alt=True)
+                if img_alt:
+                    cand = str(img_alt.get("alt") or "").strip()
+                    if 16 <= len(cand) <= 160 and is_rx_9070_xt(cand):
+                        title = cand
+                        link = card
+
+        if link is None:
+            for a in anchors:
+                candidate = a.get("title") or a.get_text(" ", strip=True)
+                candidate_str = str(candidate).strip()
+                if 16 <= len(candidate_str) <= 180 and is_rx_9070_xt(candidate_str):
+                    link = a
+                    title = candidate_str
+                    break
 
         if link is None:
             heading = card.find(["h1", "h2", "h3", "h4"])
@@ -296,7 +323,7 @@ def parse_generic_product_cards(
         if link is None and anchors and is_rx_9070_xt(card_text):
             for node in card.find_all(["h2", "h3", "h4", "p", "div", "span"]):
                 txt = node.get_text(" ", strip=True)
-                if 16 <= len(txt) <= 180 and is_rx_9070_xt(txt):
+                if 16 <= len(txt) <= 160 and is_rx_9070_xt(txt):
                     title = txt
                     link = anchors[0]
                     break

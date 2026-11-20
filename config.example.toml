@@ -30,6 +30,10 @@ target_price_eur = 680.0
 steal_price_eur = 630.0
 # Reference typical market price in Slovenia/EU for computing deal % off (EUR)
 reference_market_price_eur = 820.0
+# Never ping on secondary triggers (stacked/open-box/drops) above this landed price (EUR)
+max_alert_price_eur = 740.0
+# Never ping on secondary triggers if another in-stock card is already cheaper by >35 EUR
+max_above_cheapest_eur = 35.0
 # Also ping when ANY tracked RX 9070 XT drops by at least this much vs previous seen price
 min_price_drop_eur = 25.0
 min_price_drop_pct = 5.0

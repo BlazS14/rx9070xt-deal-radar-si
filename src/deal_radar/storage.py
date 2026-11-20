@@ -416,6 +416,21 @@ class DealStorage:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_cheapest_in_stock_eur(self) -> float | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT MIN(effective_total_eur) AS min_price
+                FROM offers
+                WHERE ships_to_slovenia = 1
+                  AND in_stock = 1
+                  AND effective_total_eur >= 420.0
+                """
+            ).fetchone()
+        if row is None or row["min_price"] is None:
+            return None
+        return float(row["min_price"])
+
     def get_price_history(
         self, store: str, offer_key: str, limit: int = 30
     ) -> list[dict[str, Any]]:

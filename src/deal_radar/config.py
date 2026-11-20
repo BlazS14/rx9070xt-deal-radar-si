@@ -31,6 +31,10 @@ class AlertsConfig:
     target_price_eur: float = 680.0
     steal_price_eur: float = 630.0
     reference_market_price_eur: float = 820.0
+    # Hard price ceiling for non-target alerts (stacked deals, open-box, price drops)
+    max_alert_price_eur: float = 740.0
+    # Suppress non-target alerts if a cheaper in-stock RX 9070 XT exists by more than this (EUR)
+    max_above_cheapest_eur: float = 35.0
     min_price_drop_eur: float = 25.0
     min_price_drop_pct: float = 5.0
     open_box_alert_ceiling_eur: float = 740.0

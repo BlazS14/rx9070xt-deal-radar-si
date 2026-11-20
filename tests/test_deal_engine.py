@@ -168,3 +168,147 @@ def test_alert_cooldown_and_extra_drop_override() -> None:
         was_in_stock=True,
     )
     assert re_alert is not None
+
+
+def test_overpriced_bware_with_inflated_msrp_never_alerts() -> None:
+    """Regression for Alternate.de €987.99 B-Ware card with fake €1,228 crossed-out price."""
+    cfg = RadarConfig()
+    engine = DealEngine(cfg)
+    raw = RawOffer(
+        store="alternate_de",
+        offer_key="alternate_de:100171225",
+        title="SAPPHIRE Radeon RX 9070 XT NITRO+ GAMING OC 16GB - Outlet",
+        url="https://www.alternate.de/SAPPHIRE/Radeon-RX-9070-XT-NITRO/html/product/100171225",
+        listed_price_eur=971.00,
+        original_price_eur=1228.00,
+        shipping_eur=16.99,
+        in_stock=True,
+        condition=Condition.B_WARE,
+    )
+    ev = engine.evaluate(raw)
+    assert ev.effective_total_eur == 987.99
+    # Discount must be computed vs realistic market reference (€820), not inflated €1,228 MSRP
+    assert ev.total_discount_pct == 0.0
+
+    alert = engine.should_alert(
+        ev,
+        previous_total_eur=None,
+        all_time_low_eur=None,
+        last_alerted_at=None,
+        last_alerted_price_eur=None,
+        was_in_stock=None,
+        market_best_eur=913.57,
+        previous_market_best_eur=913.57,
+    )
+    assert alert is None
+
+
+def test_secondary_triggers_respect_market_best_and_price_ceiling() -> None:
+    """Non-target alerts only fire when competitive with the cheapest in-stock card."""
+    cfg = RadarConfig()
+    engine = DealEngine(cfg)
+
+    open_box_730 = engine.evaluate(
+        RawOffer(
+            store="mimovrste",
+            offer_key="mimovrste:ob-730",
+            title="ASUS Prime Radeon RX 9070 XT 16GB - odprta embalaža",
+            url="https://www.mimovrste.com/graficne-kartice-amd/asus-prime-9070-xt-ob",
+            listed_price_eur=730.00,
+            shipping_eur=0.0,
+            in_stock=True,
+            condition=Condition.OPEN_BOX,
+        )
+    )
+    # Market already has a €680 in-stock card -> €730 is > €680 + €35 so do NOT spam!
+    suppressed = engine.should_alert(
+        open_box_730,
+        previous_total_eur=None,
+        all_time_low_eur=None,
+        last_alerted_at=None,
+        last_alerted_price_eur=None,
+        was_in_stock=None,
+        market_best_eur=680.00,
+        previous_market_best_eur=680.00,
+    )
+    assert suppressed is None
+
+    # Competitive open-box at €705 (within €35 of €680 best and <= €740 ceiling) DOES alert
+    open_box_705 = engine.evaluate(
+        RawOffer(
+            store="mimovrste",
+            offer_key="mimovrste:ob-705",
+            title="ASUS Prime Radeon RX 9070 XT 16GB - odprta embalaža",
+            url="https://www.mimovrste.com/graficne-kartice-amd/asus-prime-9070-xt-ob2",
+            listed_price_eur=705.00,
+            shipping_eur=0.0,
+            in_stock=True,
+            condition=Condition.OPEN_BOX,
+        )
+    )
+    competitive = engine.should_alert(
+        open_box_705,
+        previous_total_eur=None,
+        all_time_low_eur=None,
+        last_alerted_at=None,
+        last_alerted_price_eur=None,
+        was_in_stock=None,
+        market_best_eur=680.00,
+        previous_market_best_eur=680.00,
+    )
+    assert competitive is not None
+    assert any("OPEN_BOX_NEW" in r for r in competitive.reasons)
+
+    # Target/steal tier ALWAYS alerts even if another store is even cheaper
+    target_675 = engine.evaluate(
+        RawOffer(
+            store="caseking",
+            offer_key="caseking:target-675",
+            title="Sapphire Pulse Radeon RX 9070 XT 16GB",
+            url="https://www.caseking.de/en/sapphire-pulse",
+            listed_price_eur=659.01,
+            shipping_eur=15.99,
+            in_stock=True,
+        )
+    )
+    target_alert = engine.should_alert(
+        target_675,
+        previous_total_eur=None,
+        all_time_low_eur=None,
+        last_alerted_at=None,
+        last_alerted_price_eur=None,
+        was_in_stock=None,
+        market_best_eur=620.00,
+        previous_market_best_eur=620.00,
+    )
+    assert target_alert is not None
+    assert any("TARGET_PRICE" in r for r in target_alert.reasons)
+
+
+def test_cheapest_overall_trigger_fires_when_beating_market_best() -> None:
+    cfg = RadarConfig()
+    engine = DealEngine(cfg)
+    ev = engine.evaluate(
+        RawOffer(
+            store="amazon_de",
+            offer_key="amazon_de:new-best",
+            title="PowerColor Reaper Radeon RX 9070 XT 16GB",
+            url="https://www.amazon.de/dp/B0NEWBEST",
+            listed_price_eur=795.00,
+            shipping_eur=0.0,
+            in_stock=True,
+        )
+    )
+    alert = engine.should_alert(
+        ev,
+        previous_total_eur=None,
+        all_time_low_eur=None,
+        last_alerted_at=None,
+        last_alerted_price_eur=None,
+        was_in_stock=None,
+        market_best_eur=795.00,
+        previous_market_best_eur=840.00,
+    )
+    assert alert is not None
+    assert any("CHEAPEST_OVERALL" in r for r in alert.reasons)
+

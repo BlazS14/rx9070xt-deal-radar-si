@@ -140,11 +140,8 @@ class DealEngine:
         shipping = self._resolve_shipping_eur(raw)
         effective_total = round(effective_item_price + shipping, 2)
 
-        # Total effective discount vs original price (or reference market price, whichever is higher)
-        ref_price = max(
-            self.config.alerts.reference_market_price_eur,
-            raw.original_price_eur or 0.0,
-        )
+        # Discount vs realistic market reference price (prevents inflated €1228 MSRPs from faking "-20% deals")
+        ref_price = self.config.alerts.reference_market_price_eur
         savings_vs_ref = round(max(0.0, ref_price - effective_total), 2)
         total_discount_pct = round((savings_vs_ref / ref_price) * 100.0, 1) if ref_price > 0 else 0.0
 
@@ -237,6 +234,8 @@ class DealEngine:
         last_alerted_at: datetime | None,
         last_alerted_price_eur: float | None,
         was_in_stock: bool | None,
+        market_best_eur: float | None = None,
+        previous_market_best_eur: float | None = None,
     ) -> AlertEvent | None:
         """Determine whether an evaluated offer deserves an immediate user ping."""
         if not offer.raw.ships_to_slovenia:
@@ -248,47 +247,67 @@ class DealEngine:
 
         alerts = self.config.alerts
         reasons: list[str] = []
+        hit_target = False
 
         # 1. Steal / Instant-Buy tier
         if offer.effective_total_eur <= alerts.steal_price_eur:
             reasons.append(f"STEAL_PRICE (<= €{alerts.steal_price_eur:.0f})")
+            hit_target = True
         # 2. Target price hit
         elif offer.effective_total_eur <= alerts.target_price_eur:
             reasons.append(f"TARGET_PRICE (<= €{alerts.target_price_eur:.0f})")
+            hit_target = True
 
-        # 3. Stacked deal (e.g., Open-Box + Promo or Markdown + Promo) with deep discount
-        if offer.is_stacked_deal and offer.total_discount_pct >= alerts.stacked_discount_alert_pct:
-            reasons.append(f"STACKED_DEAL (-{offer.total_discount_pct:.0f}% stacked)")
+        # Secondary triggers are ONLY allowed if the card is below max_alert_price_eur
+        # AND competitive with the cheapest in-stock RX 9070 XT currently available!
+        within_ceiling = offer.effective_total_eur <= alerts.max_alert_price_eur
+        competitive_with_market = (
+            market_best_eur is None
+            or offer.effective_total_eur <= market_best_eur + alerts.max_above_cheapest_eur
+        )
 
-        # 4. Brand-new Open-Box / B-Ware / Warehouse listing below open-box ceiling
+        # 3. New cheapest RX 9070 XT across ALL stores (if below reference price and meaningfully cheaper)
+        if (
+            previous_market_best_eur is not None
+            and offer.effective_total_eur <= alerts.reference_market_price_eur
+            and offer.effective_total_eur <= previous_market_best_eur - 15.0
+            and (market_best_eur is None or offer.effective_total_eur <= market_best_eur + 1.0)
+        ):
+            reasons.append(f"CHEAPEST_OVERALL (prev best €{previous_market_best_eur:.0f})")
+
         is_new_listing = previous_total_eur is None
         restocked = was_in_stock is False and offer.in_stock
-        if (
-            offer.condition.is_open_box_like
-            and (is_new_listing or restocked)
-            and offer.effective_total_eur <= alerts.open_box_alert_ceiling_eur
-        ):
-            tag = "RESTOCK" if restocked else "NEW"
-            reasons.append(f"OPEN_BOX_{tag} ({offer.condition.display_label})")
 
-        # 5. Significant price drop vs previous observation
-        if previous_total_eur is not None and previous_total_eur > offer.effective_total_eur:
-            drop_eur = round(previous_total_eur - offer.effective_total_eur, 2)
-            drop_pct = (drop_eur / previous_total_eur) * 100.0
-            if drop_eur >= alerts.min_price_drop_eur or drop_pct >= alerts.min_price_drop_pct:
-                # Only ping on price drops when the resulting price is actually competitive
-                if offer.effective_total_eur <= alerts.reference_market_price_eur * 0.95:
+        if within_ceiling and competitive_with_market:
+            # 4. Stacked deal (e.g., Open-Box + Promo) with genuine discount vs market reference
+            if offer.is_stacked_deal and offer.total_discount_pct >= alerts.stacked_discount_alert_pct:
+                reasons.append(f"STACKED_DEAL (-{offer.total_discount_pct:.0f}% vs market)")
+
+            # 5. Brand-new Open-Box / B-Ware / Warehouse listing below open-box ceiling
+            if (
+                offer.condition.is_open_box_like
+                and (is_new_listing or restocked)
+                and offer.effective_total_eur <= alerts.open_box_alert_ceiling_eur
+            ):
+                tag = "RESTOCK" if restocked else "NEW"
+                reasons.append(f"OPEN_BOX_{tag} ({offer.condition.display_label})")
+
+            # 6. Significant price drop vs previous observation
+            if previous_total_eur is not None and previous_total_eur > offer.effective_total_eur:
+                drop_eur = round(previous_total_eur - offer.effective_total_eur, 2)
+                drop_pct = (drop_eur / previous_total_eur) * 100.0
+                if drop_eur >= alerts.min_price_drop_eur or drop_pct >= alerts.min_price_drop_pct:
                     reasons.append(f"PRICE_DROP (-€{drop_eur:.0f} / -{drop_pct:.1f}%)")
 
-        # 6. New all-time low below target+40
-        if (
-            all_time_low_eur is not None
-            and offer.effective_total_eur < all_time_low_eur - 5.0
-            and offer.effective_total_eur <= alerts.target_price_eur + 40.0
-        ):
-            reasons.append(f"ALL_TIME_LOW (prev €{all_time_low_eur:.0f})")
+            # 7. New all-time low
+            if all_time_low_eur is not None and offer.effective_total_eur < all_time_low_eur - 5.0:
+                reasons.append(f"ALL_TIME_LOW (prev €{all_time_low_eur:.0f})")
 
         if not reasons:
+            return None
+
+        # Even if a card hit a non-target trigger, suppress if something much cheaper is in stock
+        if not hit_target and not competitive_with_market:
             return None
 
         # Cooldown / deduplication guard
@@ -296,7 +315,11 @@ class DealEngine:
             now = datetime.now(timezone.utc)
             cooldown = timedelta(hours=alerts.cooldown_hours)
             extra_drop = last_alerted_price_eur - offer.effective_total_eur
-            if (now - last_alerted_at) < cooldown and extra_drop < alerts.re_alert_extra_drop_eur and not restocked:
+            if (
+                (now - last_alerted_at) < cooldown
+                and extra_drop < alerts.re_alert_extra_drop_eur
+                and not restocked
+            ):
                 return None
 
         return AlertEvent(
